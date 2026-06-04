@@ -24,6 +24,7 @@ jobs:
                 build:
                     - { tag: '1.x', php: '8.3', distro: bookworm, version-override: "v1-dev", latest-tag: true }
                     - { tag: '1.x', php: '8.4', distro: bookworm, version-override: "v1-dev", latest-tag: true }
+                    - { tag: '1.x', php: '8.5', distro: bookworm, version-override: "v1-dev", latest-tag: true }
 
         steps:
             -   uses: actions/checkout@v4

@@ -37,12 +37,18 @@ RUN set -eux; \
         exif \
         gd \
         intl \
-        opcache \
         pcntl \
         pdo_mysql \
         sockets \
         zip \
     ; \
+    \
+    # OPcache is statically compiled into PHP 8.5+, where `docker-php-ext-install opcache`
+    # fails with "cp: cannot stat 'modules/*'". Build it as a shared module only on < 8.5.
+    # See https://github.com/docker-library/php/issues/1631
+    if php -r 'exit(PHP_VERSION_ID < 80500 ? 0 : 1);'; then \
+        docker-php-ext-install opcache; \
+    fi; \
     \
     pecl install -f \
         amqp \
