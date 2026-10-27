@@ -7,7 +7,7 @@ try {
     $image->writeImage('avif' . ':' . $tmpFile);
     unlink($tmpFile);
 
-    return 0;
+    exit(0);
 } catch (\Exception $e) {
-    return 1;
+    exit(1);
 }

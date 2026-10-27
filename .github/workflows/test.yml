@@ -14,9 +14,9 @@ jobs:
         strategy:
             matrix:
                 include:
-                    - { php: '8.3', distro: bookworm }
-                    - { php: '8.4', distro: bookworm }
-                    - { php: '8.5', distro: bookworm }
+                    - { php: '8.3', distro: trixie }
+                    - { php: '8.4', distro: trixie }
+                    - { php: '8.5', distro: trixie }
         steps:
             -   uses: actions/checkout@v7
             -   name: Build Image
@@ -26,11 +26,14 @@ jobs:
                     imageVariants=("min" "default" "max" "debug" "supervisord")
 
                     for imageVariant in ${imageVariants[@]}; do
-                        docker build --tag opendxp-image \
+                        docker build --tag opendxp-image --tag "opendxp-image-$imageVariant" \
                             --target="opendxp_php_$imageVariant" \
                             --build-arg PHP_VERSION="${{ matrix.php }}" \
                             --build-arg DEBIAN_VERSION="${{ matrix.distro }}" \
                             .
+
+                        # Fail on extensions that are enabled but cannot load, e.g. a missing shared library
+                        docker run --rm opendxp-image sh -c '! php -m 2>&1 | grep -i "unable to load"'
 
                         if [ "$imageVariant" != "min" ]; then
                             # Test that Imagick is installed
@@ -59,7 +62,16 @@ jobs:
             -   name: Run Trivy vulnerability scanner
                 uses: aquasecurity/trivy-action@v0.36.0
                 with:
-                    image-ref: 'opendxp-image'
+                    image-ref: 'opendxp-image-supervisord'
+                    format: 'table'
+                    exit-code: '1'
+                    ignore-unfixed: true
+                    vuln-type: 'os,library'
+                    severity: 'CRITICAL,HIGH'
+            -   name: Run Trivy vulnerability scanner (max)
+                uses: aquasecurity/trivy-action@v0.36.0
+                with:
+                    image-ref: 'opendxp-image-max'
                     format: 'table'
                     exit-code: '1'
                     ignore-unfixed: true
