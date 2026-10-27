@@ -5,22 +5,31 @@ ARG DEBIAN_VERSION="trixie"
 
 FROM php:${PHP_VERSION}-fpm-${DEBIAN_VERSION} AS opendxp_php_min
 
+ARG DEBIAN_VERSION
+
 COPY --chmod=0755 files/build-*.sh /usr/local/bin/
 
 RUN set -eux; \
     \
     DPKG_ARCH="$(dpkg --print-architecture)"; \
+    echo "deb http://deb.debian.org/debian ${DEBIAN_VERSION}-backports main" > /etc/apt/sources.list.d/backports.list; \
+    # curl in stable has open CVEs that are only fixed in backports
+    printf 'Package: src:curl src:ngtcp2 src:nghttp3\nPin: release n=%s-backports\nPin-Priority: 500\n' "${DEBIAN_VERSION}" > /etc/apt/preferences.d/curl-backports; \
     apt-get update; \
     apt-get upgrade -y; \
+    apt-get install -y --no-install-recommends \
+        curl \
+        libcurl4t64 \
+    ; \
     \
     # tools used by OpenDXP
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
         iproute2 \
         unzip \
     ; \
     \
     # dependencies for building PHP extensions
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
         libicu-dev \
         libjpeg62-turbo-dev \
         libpng-dev \
@@ -111,34 +120,50 @@ RUN set -eux; \
     DPKG_ARCH="$(dpkg --print-architecture)"; \
     echo "deb https://www.deb-multimedia.org ${DEBIAN_VERSION} main non-free" > /etc/apt/sources.list.d/deb-multimedia.list; \
     apt-get update -oAcquire::AllowInsecureRepositories=true; \
-    apt-get install -y --allow-unauthenticated deb-multimedia-keyring; \
+    apt-get install -y --no-install-recommends --allow-unauthenticated deb-multimedia-keyring; \
     apt-get update; \
     \
     # tools used by OpenDXP
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
         exiftool \
         ffmpeg \
+        fonts-droid-fallback \
+        fonts-liberation \
         ghostscript \
         git \
         graphviz \
         jpegoptim \
+        libarchive-zip-perl \
+        libcompress-raw-lzma-perl \
+        libio-compress-brotli-perl \
+        libunicode-linebreak-perl \
         locales \
         locales-all \
+        media-types \
+        netbase \
+        openssh-client \
         optipng \
         pngquant \
+        poppler-data \
         poppler-utils \
         webp \
     ; \
     \
     # dependencies for building PHP extensions
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
         libfreetype6-dev \
+        libjpeg62-turbo-dev \
+        libpng-dev \
         libwebp-dev \
+        zlib1g-dev \
     ; \
     \
-    # ImageMagick
-    apt-get install -y \
+    # ImageMagick, the extra coders include SVG and the libheif plugins encode AVIF and HEIC
+    apt-get install -y --no-install-recommends \
         imagemagick-7.q16 \
+        libheif-plugin-aomenc \
+        libheif-plugin-x265 \
+        libmagickcore-7.q16-10-extra \
         libmagickwand-7.q16-dev \
     ; \
     \
@@ -173,9 +198,24 @@ RUN set -eux; \
     \
     build-install.sh; \
     \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
         chromium-sandbox \
-        libreoffice \
+        fonts-crosextra-caladea \
+        fonts-crosextra-carlito \
+        fonts-dejavu \
+        fonts-dejavu-extra \
+        fonts-liberation-sans-narrow \
+        fonts-linuxlibertine \
+        fonts-noto-core \
+        fonts-noto-extra \
+        fonts-noto-mono \
+        fonts-noto-ui-core \
+        fonts-sil-gentium \
+        fonts-sil-gentium-basic \
+        libreoffice-calc-nogui \
+        libreoffice-draw-nogui \
+        libreoffice-impress-nogui \
+        libreoffice-writer-nogui \
         libxml2-dev \
         openssl \
     ; \
@@ -205,7 +245,9 @@ RUN set -eux; \
     pecl install xdebug; \
     docker-php-ext-enable xdebug; \
     \
-    build-cleanup.sh; \
+    # Keep the build toolchain so extensions can be compiled ad hoc during local development
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*; \
     \
     # For local development, it should be possible to use any local (Git) Composer repository - that's safe in debug image flavor
     git config --global --add safe.directory "*"; \
@@ -229,7 +271,7 @@ FROM opendxp_php_default AS opendxp_php_supervisord
 RUN set -eux; \
     \
     apt-get update; \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
         cron \
         supervisor \
     ; \
