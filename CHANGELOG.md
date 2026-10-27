@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.1
+## v1.1.0
 - [SECURITY] The images are based on Debian 13 (trixie) instead of Debian 12 (bookworm), whose open CVEs mostly get no fix anymore.
   - The `php8.x-*` tags stay the same.
   - Downstream images that install bookworm package names (e.g. `libicu72`, `libssl3`) must switch to the trixie names (e.g. `libicu76`, `libssl3t64`).
