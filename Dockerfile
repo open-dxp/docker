@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ARG PHP_VERSION="8.3"
-ARG DEBIAN_VERSION="bookworm"
+ARG DEBIAN_VERSION="trixie"
 
 FROM php:${PHP_VERSION}-fpm-${DEBIAN_VERSION} AS opendxp_php_min
 
@@ -10,7 +10,6 @@ COPY --chmod=0755 files/build-*.sh /usr/local/bin/
 RUN set -eux; \
     \
     DPKG_ARCH="$(dpkg --print-architecture)"; \
-    echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/backports.list; \
     apt-get update; \
     apt-get upgrade -y; \
     \
@@ -103,12 +102,14 @@ CMD ["php-fpm"]
 
 FROM opendxp_php_min AS opendxp_php_default
 
+ARG DEBIAN_VERSION
+
 RUN set -eux; \
     \
     build-install.sh; \
     \
     DPKG_ARCH="$(dpkg --print-architecture)"; \
-    echo "deb https://www.deb-multimedia.org bookworm main non-free" > /etc/apt/sources.list.d/deb-multimedia.list; \
+    echo "deb https://www.deb-multimedia.org ${DEBIAN_VERSION} main non-free" > /etc/apt/sources.list.d/deb-multimedia.list; \
     apt-get update -oAcquire::AllowInsecureRepositories=true; \
     apt-get install -y --allow-unauthenticated deb-multimedia-keyring; \
     apt-get update; \
@@ -137,8 +138,8 @@ RUN set -eux; \
     \
     # ImageMagick
     apt-get install -y \
-        imagemagick-7 \
-        libmagickwand-7-dev \
+        imagemagick-7.q16 \
+        libmagickwand-7.q16-dev \
     ; \
     \
     docker-php-ext-configure gd --enable-gd --with-freetype --with-jpeg --with-webp; \
@@ -174,8 +175,6 @@ RUN set -eux; \
     \
     apt-get install -y \
         chromium-sandbox \
-        libc-client-dev \
-        libkrb5-dev \
         libreoffice \
         libxml2-dev \
         openssl \
