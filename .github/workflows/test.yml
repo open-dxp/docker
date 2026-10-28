@@ -58,6 +58,7 @@ jobs:
                         if [ "$imageVariant" != "min" ]; then
                             docker run -v "$(pwd)/.github/files":/var/www/html --rm opendxp-image php test_heif.php
                             docker run --rm opendxp-image sh -c 'magick -list format | grep -E "^ *SVG " && gs --version && exiftool -ver && pdftotext -v && ffmpeg -version'
+                            docker run --rm opendxp-image sh -c '! magick -size 1x1 xc:red /tmp/t.exr'
                         fi
 
                         if [ "$imageVariant" == "max" ]; then

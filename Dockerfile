@@ -166,6 +166,8 @@ RUN set -eux; \
         libmagickcore-7.q16-10-extra \
         libmagickwand-7.q16-dev \
     ; \
+    # OpenEXR in Debian 13 has unfixed critical CVEs (CVE-2026-42216, CVE-2026-42217) reachable through uploaded .exr files
+    sed -i 's#</policymap>#  <policy domain="coder" rights="none" pattern="EXR" />\n</policymap>#' /etc/ImageMagick-7/policy.xml; \
     \
     docker-php-ext-configure gd --enable-gd --with-freetype --with-jpeg --with-webp; \
     docker-php-ext-install gd; \
