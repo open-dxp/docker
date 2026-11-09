@@ -141,6 +141,9 @@ RUN set -eux; \
         imagemagick-7.q16 \
         libmagickwand-7.q16-dev \
     ; \
+    # OpenEXR of Debian 13 has unfixed vulnerabilities (CVE-2026-42216, CVE-2026-42217) that an uploaded .exr file reaches
+    sed -i 's#</policymap>#  <policy domain="coder" rights="none" pattern="EXR" />\n</policymap>#' /etc/ImageMagick-7/policy.xml; \
+    grep -q 'pattern="EXR"' /etc/ImageMagick-7/policy.xml; \
     \
     docker-php-ext-configure gd --enable-gd --with-freetype --with-jpeg --with-webp; \
     docker-php-ext-install gd; \

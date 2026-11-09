@@ -1,6 +1,7 @@
 # Changelog
 
 ## v1.1.1
+- [SECURITY] ImageMagick refuses EXR files. OpenEXR in Debian 13 has unfixed vulnerabilities (CVE-2026-42216, CVE-2026-42217) that an uploaded `.exr` asset reaches when its thumbnail is generated. `.exr` assets get no thumbnail.
 - [ENHANCEMENT] Every release is published as `-v1`, `-v1.<minor>` and `-latest`, for example `php8.5-debug-v1`. `-latest` no longer follows the `1.x` branch, which is published as `-v1-dev` only. The images of the newest release are rebuilt three times a week with the updates of Debian and PHP. A rebuild is published only without a fixable critical or high vulnerability.
 
 ## v1.1.0
