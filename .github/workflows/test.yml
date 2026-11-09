@@ -57,6 +57,8 @@ jobs:
 
                         if [ "$imageVariant" != "min" ]; then
                             docker run -v "$(pwd)/.github/files":/var/www/html --rm opendxp-image php test_heif.php
+                            # ImageMagick refuses EXR files by policy
+                            docker run --rm opendxp-image sh -c '! magick -size 1x1 xc:red /tmp/t.exr'
                         fi
                     done
             -   name: Run Trivy vulnerability scanner
