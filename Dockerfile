@@ -178,9 +178,28 @@ RUN set -eux; \
     \
     apt-get install -y \
         chromium-sandbox \
-        libreoffice \
         libxml2-dev \
         openssl \
+    ; \
+    \
+    # Document previews need only the headless conversion, without the GUI and the Java of the Recommends
+    apt-get install -y --no-install-recommends \
+        fonts-crosextra-caladea \
+        fonts-crosextra-carlito \
+        fonts-dejavu \
+        fonts-dejavu-extra \
+        fonts-liberation-sans-narrow \
+        fonts-linuxlibertine \
+        fonts-noto-core \
+        fonts-noto-extra \
+        fonts-noto-mono \
+        fonts-noto-ui-core \
+        fonts-sil-gentium \
+        fonts-sil-gentium-basic \
+        libreoffice-calc-nogui \
+        libreoffice-draw-nogui \
+        libreoffice-impress-nogui \
+        libreoffice-writer-nogui \
     ; \
     \
     docker-php-ext-install \
