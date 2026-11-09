@@ -4,114 +4,158 @@ on:
     workflow_dispatch:
     push:
         tags:
-            - 'v*.*'
+            - 'v*.*.*'
     schedule:
         -   cron: '30 2 * * 1,3,5'
 
 env:
     IMAGE_NAME: opendxp/opendxp
+    DEBIAN_VERSION: trixie
 
 jobs:
-    build-image:
-        name: Build Images
-        runs-on: ${{ matrix.runner }}
+    resolve:
+        name: Resolve versions
+        runs-on: ubuntu-latest
         if: github.repository == 'open-dxp/docker'
+        outputs:
+            builds: ${{ steps.resolve.outputs.builds }}
+        steps:
+            -   uses: actions/checkout@v7
+                with:
+                    fetch-depth: 0
+
+            -   name: Resolve versions
+                id: resolve
+                run: |
+                    set -euo pipefail
+
+                    latest=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+                    refs=()
+
+                    if [[ $GITHUB_REF == refs/tags/* ]]; then
+                        refs+=("$GITHUB_REF_NAME")
+                    else
+                        # The cron and a manual run rebuild the newest release and the development branch of each major
+                        # version, so the images get the security updates of Debian and PHP.
+                        for major in $(git tag -l 'v*.*.*' | sed -E 's/^v([0-9]+)\..*$/\1/' | sort -un); do
+                            refs+=("$(git tag -l "v$major.*.*" --sort=-v:refname | head -1)")
+
+                            if git ls-remote --exit-code --heads origin "$major.x" >/dev/null; then
+                                refs+=("$major.x")
+                            fi
+                        done
+                    fi
+
+                    for ref in "${refs[@]}"; do
+                        for php in 8.3 8.4 8.5; do
+                            jq -nc --arg ref "$ref" --arg php "$php" --arg latest "$latest" \
+                                '{ref: $ref, php: $php, latest: ($ref == $latest)}'
+                        done
+                    done | jq -sc '"builds=\(.)"' -r >> "$GITHUB_OUTPUT"
+
+    build-image:
+        name: Build images
+        needs: resolve
+        runs-on: ${{ matrix.runner }}
         strategy:
+            fail-fast: false
             matrix:
                 runner:
                     - ubuntu-22.04
                     - ubuntu-22.04-arm
-                build:
-                    - { tag: '1.x', php: '8.3', distro: trixie, version-override: "v1-dev", latest-tag: true }
-                    - { tag: '1.x', php: '8.4', distro: trixie, version-override: "v1-dev", latest-tag: true }
-                    - { tag: '1.x', php: '8.5', distro: trixie, version-override: "v1-dev", latest-tag: true }
+                build: ${{ fromJSON(needs.resolve.outputs.builds) }}
 
         steps:
             -   uses: actions/checkout@v7
                 with:
-                    ref: ${{ matrix.build.tag }}
+                    ref: ${{ matrix.build.ref }}
 
             -   name: Login to DockerHub Registry
                 run: echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
 
-            -   name: Configure and build images
-                id: vars
+            -   name: Build images
                 env:
-                    VERSION_OVERRIDE: "${{ matrix.build.version-override }}"
-                    ARCH_TAG: ${{ contains(matrix.runner, 'arm') && 'arm64' || 'amd64' }}
+                    REF: ${{ matrix.build.ref }}
+                    PHP: ${{ matrix.build.php }}
+                    LATEST: ${{ matrix.build.latest }}
+                    ARCH: ${{ contains(matrix.runner, 'arm') && 'arm64' || 'amd64' }}
                 run: |
-                    set -eux;
-                    sudo apt-get update
+                    set -euo pipefail
 
-                    echo ${{ matrix.runner}}
+                    # A release v1.2.0 is published as -v1, -v1.2 and, if it is the newest, -latest. A branch 1.x as -v1-dev.
+                    if [[ $REF =~ ^v([0-9]+)\.([0-9]+)\.[0-9]+$ ]]; then
+                        versions=("v${BASH_REMATCH[1]}" "v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}")
+                        detailed=${versions[1]}
 
-                    imageVariants=("min" "default" "max" "debug" "supervisord")
-                    
-                    for imageVariant in ${imageVariants[@]}; do
-                        echo "Building image variant $imageVariant"
-                        DOCKER_PLATFORMS=linux/amd64,linux/arm64
-                        PHP_VERSION=${{ matrix.build.php }}
-                        DEBIAN_VERSION="${{ matrix.build.distro }}"
-                        VERSION="${{ matrix.build.tag }}"
-                    
-                        # for the latest dev branch we use "dev" as the version and not the name of the branch
-                        if [ ! -z "$VERSION_OVERRIDE" ]; then
-                            VERSION="$VERSION_OVERRIDE"
+                        if [[ $LATEST == true ]]; then
+                            versions+=(latest)
                         fi
-                    
-                        PHP_SUB_VERSION=$(docker run -i --rm php:${{ matrix.build.php }}-fpm-${{ matrix.build.distro }} php -r 'echo PHP_VERSION;')
-                    
-                        if [ "$imageVariant" = "default"  ]; then
-                            BASE_TAG="php${{ matrix.build.php }}"
-                            BASE_TAG_DETAILED="php${PHP_SUB_VERSION}"
+                    else
+                        versions=("v${REF%.x}-dev")
+                        detailed=${versions[0]}
+                    fi
+
+                    patch=$(docker run --rm "php:$PHP-fpm-$DEBIAN_VERSION" php -r 'echo PHP_VERSION;')
+
+                    for variant in min default max debug supervisord; do
+                        if [[ $variant == default ]]; then
+                            base="php$PHP"
+                            base_detailed="php$patch"
                         else
-                            BASE_TAG="php${{ matrix.build.php }}-$imageVariant"
-                            BASE_TAG_DETAILED="php${PHP_SUB_VERSION}-$imageVariant"
+                            base="php$PHP-$variant"
+                            base_detailed="php$patch-$variant"
                         fi
 
-                        TAG="${BASE_TAG}-${VERSION}-${ARCH_TAG}"
-                        TAG_DETAILED="${BASE_TAG_DETAILED}-${VERSION}-${ARCH_TAG}"
+                        tags=()
 
-                        TAGS="--tag ${IMAGE_NAME}:${TAG}"
-                        TAGS="$TAGS --tag ${IMAGE_NAME}:${TAG_DETAILED}"
+                        for version in "${versions[@]}"; do
+                            tags+=("$IMAGE_NAME:$base-$version")
+                        done
 
-                        # Tag latest with Version build too
-                        if [ "true" = "${{ matrix.build.latest-tag }}" ]; then
-                            TAGS="$TAGS --tag ${IMAGE_NAME}:${BASE_TAG}-latest-${ARCH_TAG}"
-                        fi
-                    
-                        # Create tag for major version
-                        if [[ $VERSION =~ ^v[0-9]+.[0-9]+$ ]]; then
-                            VERSION_MAJOR="${VERSION//.[0-9]/}"
-                            TAG_MAJOR="${BASE_TAG}-${VERSION_MAJOR}-${ARCH_TAG}"
-                            TAGS="$TAGS --tag ${IMAGE_NAME}:${TAG_MAJOR}"
-                        fi
+                        tags+=("$IMAGE_NAME:$base_detailed-$detailed")
 
-                        docker build --output "type=image,push=true" \
-                            --target="opendxp_php_$imageVariant" \
-                            --build-arg PHP_VERSION="${PHP_VERSION}" \
-                            --build-arg DEBIAN_VERSION="${DEBIAN_VERSION}" \
-                            ${TAGS} .
+                        args=(--tag "opendxp-$variant")
 
-                        docker inspect ${IMAGE_NAME}:${TAG} || true;
-
-                        CLEAN_TAGS="${TAGS//-arm64/}"
-                        CLEAN_TAGS="${CLEAN_TAGS//-amd64/}"
-                        CLEAN_TAGS="${CLEAN_TAGS//--tag /}"
-
-                        read -r -a TAGS_ARRAY <<< "$CLEAN_TAGS"
-                                              
-                        for tag in "${TAGS_ARRAY[@]}"; do
-                            echo "Processing tag: $tag"
+                        for tag in "${tags[@]}"; do
+                            args+=(--tag "$tag-$ARCH")
                             echo "$tag" >> aggregated_tags.txt
                         done
 
+                        docker build "${args[@]}" \
+                            --target "opendxp_php_$variant" \
+                            --build-arg PHP_VERSION="$PHP" \
+                            --build-arg DEBIAN_VERSION="$DEBIAN_VERSION" \
+                            .
                     done
+
+            # The same gate as in the tests. Nothing is pushed while a fixable critical or high vulnerability remains.
+            -   name: Run Trivy vulnerability scanner (supervisord)
+                uses: aquasecurity/trivy-action@v0.36.0
+                with:
+                    image-ref: 'opendxp-supervisord'
+                    format: 'table'
+                    exit-code: '1'
+                    ignore-unfixed: true
+                    vuln-type: 'os,library'
+                    severity: 'CRITICAL,HIGH'
+
+            -   name: Run Trivy vulnerability scanner (max)
+                uses: aquasecurity/trivy-action@v0.36.0
+                with:
+                    image-ref: 'opendxp-max'
+                    format: 'table'
+                    exit-code: '1'
+                    ignore-unfixed: true
+                    vuln-type: 'os,library'
+                    severity: 'CRITICAL,HIGH'
+
+            -   name: Push images
+                run: docker push --all-tags "$IMAGE_NAME"
 
             -   name: Upload aggregated tags
                 uses: actions/upload-artifact@v7
                 with:
-                    name: aggregated_tags_${{ matrix.runner }}_${{ matrix.build.tag }}_${{ matrix.build.php }}_${{ matrix.build.distro }}_${{ matrix.build.version-override }}_${{ matrix.build.latest-tag }}
+                    name: aggregated_tags_${{ matrix.runner }}_${{ matrix.build.ref }}_${{ matrix.build.php }}
                     path: aggregated_tags.txt
 
     process-tags:
