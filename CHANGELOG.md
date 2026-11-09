@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.1.1
+- [ENHANCEMENT] Every release is published as `-v1`, `-v1.<minor>` and `-latest`, for example `php8.5-debug-v1`. `-latest` no longer follows the `1.x` branch, which is published as `-v1-dev` only. The images of the newest release are rebuilt three times a week with the updates of Debian and PHP. A rebuild is published only without a fixable critical or high vulnerability.
+
 ## v1.1.0
 - [SECURITY] The images are based on Debian 13 (trixie) instead of Debian 12 (bookworm), whose open CVEs mostly get no fix anymore.
   - The `php8.x-*` tags stay the same.
